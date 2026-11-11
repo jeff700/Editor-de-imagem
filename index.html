@@ -52,16 +52,16 @@
             const originalName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
             document.getElementById('fileNameInput').value = originalName + '-editado';
 
-            // Utiliza ObjectURL para contornar bloqueios do iframe e carregar instantaneamente
-            const objectURL = URL.createObjectURL(file);
-            const img = new Image();
-            
-            img.onload = function() {
-                loadedImage = img;
-                redrawCanvas();
-                URL.revokeObjectURL(objectURL); // Libera memória
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    loadedImage = img;
+                    redrawCanvas();
+                }
+                img.src = event.target.result;
             }
-            img.src = objectURL;
+            reader.readAsDataURL(file);
         });
 
         function redrawCanvas() {
