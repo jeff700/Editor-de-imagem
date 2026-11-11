@@ -54,6 +54,7 @@
 
         let currentImageObj = null;
 
+        // Correção robusta para leitura e exibição de imagens locais
         document.getElementById('uploadImage').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -61,27 +62,32 @@
             const originalName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
             document.getElementById('fileNameInput').value = originalName + '-editado';
 
-            const objectURL = URL.createObjectURL(file);
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const imgElement = new Image();
+                imgElement.onload = function() {
+                    canvas.clear();
+                    
+                    const fabricImg = new fabric.Image(imgElement);
+                    fabricImg.scaleToWidth(canvas.width * 0.8);
+                    fabricImg.set({
+                        left: canvas.width / 2,
+                        top: canvas.height / 2,
+                        originX: 'center',
+                        originY: 'center',
+                        cornerColor: 'blue',
+                        cornerSize: 8,
+                        transparentCorners: false
+                    });
 
-            fabric.Image.fromURL(objectURL, function(img) {
-                canvas.clear();
-                
-                img.scaleToWidth(canvas.width * 0.8);
-                img.set({
-                    left: canvas.width / 2,
-                    top: canvas.height / 2,
-                    originX: 'center',
-                    originY: 'center',
-                    cornerColor: 'blue',
-                    cornerSize: 8,
-                    transparentCorners: false
-                });
-
-                currentImageObj = img;
-                canvas.add(img);
-                canvas.setActiveObject(img);
-                canvas.renderAll();
-            }, { crossOrigin: 'anonymous' });
+                    currentImageObj = fabricImg;
+                    canvas.add(fabricImg);
+                    canvas.setActiveObject(fabricImg);
+                    canvas.renderAll();
+                }
+                imgElement.src = event.target.result;
+            }
+            reader.readAsDataURL(file);
         });
 
         function addText() {
@@ -138,35 +144,42 @@
             try {
                 const targetFile = fileInput.files[0];
                 const blob = await imgBlobBackgroundRemoval(targetFile);
-                const newObjectURL = URL.createObjectURL(blob);
                 
-                fabric.Image.fromURL(newObjectURL, function(newImg) {
-                    if (currentImageObj) {
-                        newImg.scaleX = currentImageObj.scaleX;
-                        newImg.scaleY = currentImageObj.scaleY;
-                        newImg.left = currentImageObj.left;
-                        newImg.top = currentImageObj.top;
-                        canvas.remove(currentImageObj);
-                    } else {
-                        newImg.scaleToWidth(canvas.width * 0.8);
-                        newImg.left = canvas.width / 2;
-                        newImg.top = canvas.height / 2;
-                        newImg.originX = 'center';
-                        newImg.originY = 'center';
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const imgElement = new Image();
+                    imgElement.onload = function() {
+                        const newImg = new fabric.Image(imgElement);
+                        
+                        if (currentImageObj) {
+                            newImg.scaleX = currentImageObj.scaleX;
+                            newImg.scaleY = currentImageObj.scaleY;
+                            newImg.left = currentImageObj.left;
+                            newImg.top = currentImageObj.top;
+                            canvas.remove(currentImageObj);
+                        } else {
+                            newImg.scaleToWidth(canvas.width * 0.8);
+                            newImg.left = canvas.width / 2;
+                            newImg.top = canvas.height / 2;
+                            newImg.originX = 'center';
+                            newImg.originY = 'center';
+                        }
+
+                        newImg.set({
+                            cornerColor: 'blue',
+                            cornerSize: 8,
+                            transparentCorners: false
+                        });
+
+                        currentImageObj = newImg;
+                        canvas.add(newImg);
+                        canvas.setActiveObject(newImg);
+                        canvas.renderAll();
+                        loadingEl.style.display = 'none';
                     }
-
-                    newImg.set({
-                        cornerColor: 'blue',
-                        cornerSize: 8,
-                        transparentCorners: false
-                    });
-
-                    currentImageObj = newImg;
-                    canvas.add(newImg);
-                    canvas.setActiveObject(newImg);
-                    canvas.renderAll();
-                    loadingEl.style.display = 'none';
-                }, { crossOrigin: 'anonymous' });
+                    imgElement.src = event.target.result;
+                }
+                reader.readAsDataURL(blob);
             } catch (error) {
                 console.error(error);
                 alert("Erro ao remover o fundo.");
