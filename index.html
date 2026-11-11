@@ -43,10 +43,7 @@
         const ctx = canvas.getContext('2d');
         
         let loadedImage = null;
-        let elements = []; // Armazena textos e retângulos adicionados
-        let selectedElement = null;
-        let isDragging = false;
-        let startX, startY;
+        let elements = [];
 
         document.getElementById('uploadImage').addEventListener('change', function(e) {
             const file = e.target.files[0];
@@ -55,23 +52,22 @@
             const originalName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
             document.getElementById('fileNameInput').value = originalName + '-editado';
 
-            const reader = new FileReader();
-            reader.onload = function(event) {
-                const img = new Image();
-                img.onload = function() {
-                    loadedImage = img;
-                    redrawCanvas();
-                }
-                img.src = event.target.result;
+            // Utiliza ObjectURL para contornar bloqueios do iframe e carregar instantaneamente
+            const objectURL = URL.createObjectURL(file);
+            const img = new Image();
+            
+            img.onload = function() {
+                loadedImage = img;
+                redrawCanvas();
+                URL.revokeObjectURL(objectURL); // Libera memória
             }
-            reader.readAsDataURL(file);
+            img.src = objectURL;
         });
 
         function redrawCanvas() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
             if (loadedImage) {
-                // Desenha a imagem mantendo a proporção centralizada
                 const hRatio = canvas.width / loadedImage.width;
                 const vRatio = canvas.height / loadedImage.height;
                 const ratio = Math.min(hRatio, vRatio);
@@ -81,7 +77,6 @@
                 ctx.drawImage(loadedImage, 0, 0, loadedImage.width, loadedImage.height, centerShiftX, centerShiftY, loadedImage.width * ratio, loadedImage.height * ratio);
             }
 
-            // Desenha os elementos adicionados (textos e retângulos)
             elements.forEach(el => {
                 ctx.save();
                 if (el.type === 'text') {
