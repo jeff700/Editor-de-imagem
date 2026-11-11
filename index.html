@@ -5,21 +5,17 @@
     <style>
         body { font-family: sans-serif; text-align: center; background: #f4f4f4; padding: 10px; margin: 0; }
         #editor-container { position: relative; display: inline-block; border: 2px dashed #ccc; background: #fff; margin-top: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        canvas { display: block; cursor: crosshair; }
         .controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 10px; align-items: center; }
         button, input[type="file"], input[type="text"] { padding: 8px 12px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: #fff; font-weight: bold; font-family: inherit; }
         button:hover { background: #e0e0e0; }
         .btn-action { background-color: #007bff; color: white; border: none; }
         .btn-action:hover { background-color: #0056b3; }
-        .btn-danger { background-color: #ff4757; color: white; border: none; }
-        .btn-danger:hover { background-color: #ff3344; }
         .btn-success { background-color: #28a745; color: white; border: none; }
         .btn-success:hover { background-color: #218838; }
         .input-group { display: inline-flex; align-items: center; gap: 4px; background: #fff; padding: 2px 6px; border: 1px solid #ccc; border-radius: 4px; }
         .input-group input { border: none; outline: none; padding: 4px; }
-        #loading { display: none; font-weight: bold; color: #007bff; margin-top: 5px; }
     </style>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/531/fabric.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.7/dist/bundle.js"></script>
 </head>
 <body>
 
@@ -29,8 +25,7 @@
     <div class="controls">
         <button class="btn-action" onclick="addText()">Adicionar Texto</button>
         <button class="btn-action" onclick="addRect()">Adicionar Retângulo</button>
-        <button class="btn-danger" onclick="removeBackground()">Remover Fundo (IA)</button>
-        <button onclick="deleteSelected()" style="background-color: #6c757d; color: white; border: none;">Excluir</button>
+        <button onclick="clearCanvas()" style="background-color: #ff4757; color: white; border: none;">Limpar Tudo</button>
         
         <div class="input-group">
             <span style="font-size: 12px; color: #666;">Salvar como:</span>
@@ -38,20 +33,20 @@
         </div>
         <button class="btn-success" onclick="saveImage()">Salvar Imagem</button>
     </div>
-    
-    <div id="loading">Removendo fundo, aguarde um instante...</div>
 
     <div id="editor-container">
         <canvas id="canvas" width="600" height="400"></canvas>
     </div>
 
     <script>
-        const canvas = new fabric.Canvas('canvas', {
-            width: 600,
-            height: 400
-        });
-
-        let currentImageObj = null;
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let loadedImage = null;
+        let elements = []; // Armazena textos e retângulos adicionados
+        let selectedElement = null;
+        let isDragging = false;
+        let startX, startY;
 
         document.getElementById('uploadImage').addEventListener('change', function(e) {
             const file = e.target.files[0];
@@ -62,143 +57,85 @@
 
             const reader = new FileReader();
             reader.onload = function(event) {
-                const imgElement = new Image();
-                imgElement.onload = function() {
-                    canvas.clear();
-                    
-                    const fabricImg = new fabric.Image(imgElement);
-                    fabricImg.scaleToWidth(canvas.width * 0.8);
-                    fabricImg.set({
-                        left: canvas.width / 2,
-                        top: canvas.height / 2,
-                        originX: 'center',
-                        originY: 'center',
-                        cornerColor: 'blue',
-                        cornerSize: 8,
-                        transparentCorners: false
-                    });
-
-                    currentImageObj = fabricImg;
-                    canvas.add(fabricImg);
-                    canvas.setActiveObject(fabricImg);
-                    canvas.renderAll();
+                const img = new Image();
+                img.onload = function() {
+                    loadedImage = img;
+                    redrawCanvas();
                 }
-                imgElement.src = event.target.result;
+                img.src = event.target.result;
             }
             reader.readAsDataURL(file);
         });
 
-        function addText() {
-            const text = new fabric.IText('Texto Editável', {
-                left: 100,
-                top: 100,
-                fontFamily: 'Arial',
-                fill: 'red',
-                fontSize: 24,
-                cornerColor: 'blue',
-                cornerSize: 8,
-                transparentCorners: false
+        function redrawCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (loadedImage) {
+                // Desenha a imagem mantendo a proporção centralizada
+                const hRatio = canvas.width / loadedImage.width;
+                const vRatio = canvas.height / loadedImage.height;
+                const ratio = Math.min(hRatio, vRatio);
+                const centerShiftX = (canvas.width - loadedImage.width * ratio) / 2;
+                const centerShiftY = (canvas.height - loadedImage.height * ratio) / 2;
+                
+                ctx.drawImage(loadedImage, 0, 0, loadedImage.width, loadedImage.height, centerShiftX, centerShiftY, loadedImage.width * ratio, loadedImage.height * ratio);
+            }
+
+            // Desenha os elementos adicionados (textos e retângulos)
+            elements.forEach(el => {
+                ctx.save();
+                if (el.type === 'text') {
+                    ctx.font = el.font;
+                    ctx.fillStyle = el.color;
+                    ctx.fillText(el.text, el.x, el.y);
+                } else if (el.type === 'rect') {
+                    ctx.strokeStyle = el.stroke;
+                    ctx.lineWidth = el.lineWidth;
+                    ctx.strokeRect(el.x, el.y, el.width, el.height);
+                }
+                ctx.restore();
             });
-            canvas.add(text);
-            canvas.setActiveObject(text);
+        }
+
+        function addText() {
+            elements.push({
+                type: 'text',
+                text: 'Texto de Exemplo',
+                x: 100,
+                y: 100,
+                font: '20px Arial',
+                color: 'red'
+            });
+            redrawCanvas();
         }
 
         function addRect() {
-            const rect = new fabric.Rect({
-                left: 150,
-                top: 150,
-                fill: 'transparent',
-                stroke: 'blue',
-                strokeWidth: 3,
+            elements.push({
+                type: 'rect',
+                x: 150,
+                y: 150,
                 width: 150,
                 height: 100,
-                cornerColor: 'blue',
-                cornerSize: 8,
-                transparentCorners: false
+                stroke: 'blue',
+                lineWidth: 3
             });
-            canvas.add(rect);
-            canvas.setActiveObject(rect);
+            redrawCanvas();
         }
 
-        function deleteSelected() {
-            const activeObjects = canvas.getActiveObjects();
-            if (activeObjects.length) {
-                activeObjects.forEach(obj => canvas.remove(obj));
-                canvas.discardActiveObject();
-                canvas.renderAll();
-            }
-        }
-
-        async function removeBackground() {
-            const fileInput = document.getElementById('uploadImage');
-            if (!fileInput.files[0] && !currentImageObj) {
-                alert("Por favor, selecione uma imagem primeiro.");
-                return;
-            }
-
-            const loadingEl = document.getElementById('loading');
-            loadingEl.style.display = 'block';
-
-            try {
-                const targetFile = fileInput.files[0];
-                const blob = await imgBlobBackgroundRemoval(targetFile);
-                
-                const reader = new FileReader();
-                reader.onload = function(event) {
-                    const imgElement = new Image();
-                    imgElement.onload = function() {
-                        const newImg = new fabric.Image(imgElement);
-                        
-                        if (currentImageObj) {
-                            newImg.scaleX = currentImageObj.scaleX;
-                            newImg.scaleY = currentImageObj.scaleY;
-                            newImg.left = currentImageObj.left;
-                            newImg.top = currentImageObj.top;
-                            canvas.remove(currentImageObj);
-                        } else {
-                            newImg.scaleToWidth(canvas.width * 0.8);
-                            newImg.left = canvas.width / 2;
-                            newImg.top = canvas.height / 2;
-                            newImg.originX = 'center';
-                            newImg.originY = 'center';
-                        }
-
-                        newImg.set({
-                            cornerColor: 'blue',
-                            cornerSize: 8,
-                        });
-
-                        currentImageObj = newImg;
-                        canvas.add(newImg);
-                        canvas.setActiveObject(newImg);
-                        canvas.renderAll();
-                        loadingEl.style.display = 'none';
-                    }
-                    imgElement.src = event.target.result;
-                }
-                reader.readAsDataURL(blob);
-            } catch (error) {
-                console.error(error);
-                alert("Erro ao remover o fundo.");
-                loadingEl.style.display = 'none';
-            }
+        function clearCanvas() {
+            elements = [];
+            loadedImage = null;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            document.getElementById('uploadImage').value = '';
         }
 
         function saveImage() {
-            canvas.discardActiveObject();
-            canvas.renderAll();
-
             let customName = document.getElementById('fileNameInput').value.trim();
             if (!customName) {
                 customName = 'imagem-editada';
             }
 
-            const dataURL = canvas.toDataURL({
-                format: 'png',
-                quality: 1,
-                multiplier: 1
-            });
-
+            const dataURL = canvas.toDataURL('image/png');
             const link = document.createElement('a');
             link.download = customName + '.png';
             link.href = dataURL;
