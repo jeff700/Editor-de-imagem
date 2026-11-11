@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #f4f4f4; padding: 10px; margin: 0; }
+        #editor-container { position: relative; display: inline-block; border: 2px dashed #ccc; background: #fff; margin-top: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 10px; align-items: center; }
+        button, input[type="file"], input[type="text"] { padding: 8px 12px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: #fff; font-weight: bold; font-family: inherit; }
+        button:hover { background: #e0e0e0; }
+        .btn-action { background-color: #007bff; color: white; border: none; }
+        .btn-action:hover { background-color: #0056b3; }
+        .btn-danger { background-color: #ff4757; color: white; border: none; }
+        .btn-danger:hover { background-color: #ff3344; }
+        .btn-success { background-color: #28a745; color: white; border: none; }
+        .btn-success:hover { background-color: #218838; }
+        .input-group { display: inline-flex; align-items: center; gap: 4px; background: #fff; padding: 2px 6px; border: 1px solid #ccc; border-radius: 4px; }
+        .input-group input { border: none; outline: none; padding: 4px; }
+        #loading { display: none; font-weight: bold; color: #007bff; margin-top: 5px; }
+    </style>
+    <!-- Carrega o Fabric.js e o removedor de fundo -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/531/fabric.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.7/dist/bundle.js"></script>
+</head>
+<body>
+
+    <h3>Editor de Imagem e Anotações</h3>
+    <input type="file" id="uploadImage" accept="image/*">
+    
+    <div class="controls">
+        <button class="btn-action" onclick="addText()">Adicionar Texto</button>
+        <button class="btn-action" onclick="addRect()">Adicionar Retângulo</button>
+        <button class="btn-danger" onclick="removeBackground()">Remover Fundo (IA)</button>
+        <button onclick="deleteSelected()" style="background-color: #6c757d; color: white; border: none;">Excluir</button>
+        
+        <div class="input-group">
+            <span style="font-size: 12px; color: #666;">Salvar como:</span>
+            <input type="text" id="fileNameInput" value="imagem-editada">
+        </div>
+        <button class="btn-success" onclick="saveImage()">Salvar Imagem</button>
+    </div>
+    
+    <div id="loading">Removendo fundo, aguarde um instante...</div>
+
+    <div id="editor-container">
+        <canvas id="canvas" width="600" height="400"></canvas>
+    </div>
+
+    <script>
+        const canvas = new fabric.Canvas('canvas', {
+            width: 600,
+            height: 400
+        });
+
+        let currentImageObj = null;
+
+        document.getElementById('uploadImage').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const originalName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+            document.getElementById('fileNameInput').value = originalName + '-editado';
+
+            const objectURL = URL.createObjectURL(file);
+
+            fabric.Image.fromURL(objectURL, function(img) {
+                canvas.clear();
+                
+                img.scaleToWidth(canvas.width * 0.8);
+                img.set({
+                    left: canvas.width / 2,
+                    top: canvas.height / 2,
+                    originX: 'center',
+                    originY: 'center',
+                    cornerColor: 'blue',
+                    cornerSize: 8,
+                    transparentCorners: false
+                });
+
+                currentImageObj = img;
+                canvas.add(img);
+                canvas.setActiveObject(img);
+                canvas.renderAll();
+            }, { crossOrigin: 'anonymous' });
+        });
+
+        function addText() {
+            const text = new fabric.IText('Texto Editável', {
+                left: 100,
+                top: 100,
+                fontFamily: 'Arial',
+                fill: 'red',
+                fontSize: 24,
+                cornerColor: 'blue',
+                cornerSize: 8,
+                transparentCorners: false
+            });
+            canvas.add(text);
+            canvas.setActiveObject(text);
+        }
+
+        function addRect() {
+            const rect = new fabric.Rect({
+                left: 150,
+                top: 150,
+                fill: 'transparent',
+                stroke: 'blue',
+                strokeWidth: 3,
+                width: 150,
+                height: 100,
+                cornerColor: 'blue',
+                cornerSize: 8,
+                transparentCorners: false
+            });
+            canvas.add(rect);
+            canvas.setActiveObject(rect);
+        }
+
+        function deleteSelected() {
+            const activeObjects = canvas.getActiveObjects();
+            if (activeObjects.length) {
+                activeObjects.forEach(obj => canvas.remove(obj));
+                canvas.discardActiveObject();
+                canvas.renderAll();
+            }
+        }
+
+        async function removeBackground() {
+            const fileInput = document.getElementById('uploadImage');
+            if (!fileInput.files[0] && !currentImageObj) {
+                alert("Por favor, selecione uma imagem primeiro.");
+                return;
+            }
+
+            const loadingEl = document.getElementById('loading');
+            loadingEl.style.display = 'block';
+
+            try {
+                const targetFile = fileInput.files[0];
+                const blob = await imgBlobBackgroundRemoval(targetFile);
+                const newObjectURL = URL.createObjectURL(blob);
+                
+                fabric.Image.fromURL(newObjectURL, function(newImg) {
+                    if (currentImageObj) {
+                        newImg.scaleX = currentImageObj.scaleX;
+                        newImg.scaleY = currentImageObj.scaleY;
+                        newImg.left = currentImageObj.left;
+                        newImg.top = currentImageObj.top;
+                        canvas.remove(currentImageObj);
+                    } else {
+                        newImg.scaleToWidth(canvas.width * 0.8);
+                        newImg.left = canvas.width / 2;
+                        newImg.top = canvas.height / 2;
+                        newImg.originX = 'center';
+                        newImg.originY = 'center';
+                    }
+
+                    newImg.set({
+                        cornerColor: 'blue',
+                        cornerSize: 8,
+                        transparentCorners: false
+                    });
+
+                    currentImageObj = newImg;
+                    canvas.add(newImg);
+                    canvas.setActiveObject(newImg);
+                    canvas.renderAll();
+                    loadingEl.style.display = 'none';
+                }, { crossOrigin: 'anonymous' });
+            } catch (error) {
+                console.error(error);
+                alert("Erro ao remover o fundo.");
+                loadingEl.style.display = 'none';
+            }
+        }
+
+        function saveImage() {
+            canvas.discardActiveObject();
+            canvas.renderAll();
+
+            let customName = document.getElementById('fileNameInput').value.trim();
+            if (!customName) {
+                customName = 'imagem-editada';
+            }
+
+            const dataURL = canvas.toDataURL({
+                format: 'png',
+                quality: 1,
+                multiplier: 1
+            });
+
+            const link = document.createElement('a');
+            link.download = customName + '.png';
+            link.href = dataURL;
+            link.target = '_blank';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+
+</body>
+</html>
